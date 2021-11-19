@@ -1,19 +1,21 @@
 package com.repository;
 
 import com.entyty.ToDo;
-import com.entyty.User;
+
+import java.time.LocalDateTime;
+import java.util.List;
 
 public interface JdbcTemplateRepository {
 
-    void writeToDoInDataBase(ToDo toDo);
+    void createToDo(String text, LocalDateTime diedLineTime, int parentTodoId);
 
-    User findUserByLogin(String text);
+    boolean findUserInDataBase(String login, String password);
 
-    void listAllUnfulfilledToDo(int userId);
+    List<ToDo> listAllUnfulfilledToDo();
 
-    void deadlineMessageOutput();
+    List<ToDo> listDeadLineToDo();
 
-    ToDo getToDoById(int todoId);
+    ToDo getToDoByTodoId(int todoId);
 
     void changeStatusToDoInDataBase(int todoId);
 

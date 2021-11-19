@@ -13,34 +13,54 @@ import java.util.List;
 @Repository
 public class SimpleJdbcTemplateRepository implements JdbcTemplateRepository {
 
-    private final JdbcTemplate jdbcTemplate;
-
     @Autowired
-    public SimpleJdbcTemplateRepository(JdbcTemplate jdbcTemplate) {
-        this.jdbcTemplate = jdbcTemplate;
-    }
+    private JdbcTemplate jdbcTemplate;
 
-
+    private int userId;
+    private int todoId = 1;
 
     /**
-     * Метод проверяет в базе данных пользователя с данным логином, если нет возвращает null;
+     * Метод проверяет, по login и password, имеет ли пользователь доступ;
      *
      * @param login
-     * @return User
+     * @param password
+     * @return true or false;
      */
     @Override
-    public User findUserByLogin(String login) {
-        String sqlQuery = "SELECT * from users where login=?;";
-        return jdbcTemplate.query(sqlQuery, new Object[]{login}, new BeanPropertyRowMapper<>(User.class)).stream().findAny().orElse(null);
+    public boolean findUserInDataBase(String login, String password) {
+        String sqlQuery = "SELECT * from users where login=? and password=?;";
+        User user = jdbcTemplate.query(sqlQuery, new Object[]{login, password}, new BeanPropertyRowMapper<>(User.class)).stream().findAny().orElse(null);
+        if (user != null) {
+            userId = user.getUserId();
+            return true;
+        }
+        return false;
     }
 
     /**
-     * Метод записывает задание в базу данных;
+     * Приватный метод возвращает текущую дату и время, в нужном формате;
      *
-     * @param toDo
+     * @return LocalDateTime;
+     */
+    private LocalDateTime getDateTimeNow() {
+        return LocalDateTime.of(LocalDateTime.now().getYear()
+                , LocalDateTime.now().getMonth()
+                , LocalDateTime.now().getDayOfMonth()
+                , LocalDateTime.now().getHour()
+                , LocalDateTime.now().getMinute());
+    }
+
+    /**
+     * Метод создает задачу и записывает ее в базу данных;
+     *
+     * @param text
+     * @param diedLineTime
+     * @param parentTodoId
      */
     @Override
-    public void writeToDoInDataBase(ToDo toDo) {
+    public void createToDo(String text, LocalDateTime diedLineTime, int parentTodoId) {
+        ToDo toDo = new ToDo(todoId, text, getDateTimeNow(), diedLineTime, "Создано", userId, parentTodoId);
+        todoId++;
         String sqlQuery = "INSERT into todo values(?, ?, ?, ?, ?, ?, ?);";
         jdbcTemplate.update(sqlQuery,
                 toDo.getTodoId(),
@@ -53,79 +73,44 @@ public class SimpleJdbcTemplateRepository implements JdbcTemplateRepository {
     }
 
     /**
-     * Метод выводит все невыполнение задачи пользователя;
-     *
-     * @param userId
-     */
-    @Override
-    public void listAllUnfulfilledToDo(int userId) {
-        String sqlQuery = "SELECT * from todo where status != 'Выполнено' AND user_id=? order by parent_todo_id;";
-        List<ToDo> listToDo = jdbcTemplate.query(sqlQuery, new Object[]{userId}, new BeanPropertyRowMapper<>(ToDo.class));
-        if (!(listToDo.isEmpty())) {
-            for (ToDo toDo : listToDo) {
-                System.out.println("------------------------------------------------------------------------------");
-                System.out.println("Статус: " + toDo.getStatus()
-                        + " || ID " + toDo.getTodoId()
-                        + " || Задача: " + toDo.getDescription()
-                        + " || Дедлайн: " + toDo.getStopDate()
-                        + " || Родительский ID " + toDo.getParentTodoId());
-            }
-        } else {
-            System.out.println("------------------------------------------------------------------------------");
-            System.out.println("Список невыполненных задач пуст");
-        }
-    }
-
-    /**
-     * Метод выводит сообщение за 1 час до Дедлайна задачи;
-     */
-    @Override
-    public void deadlineMessageOutput() {
-        String sqlQuery = "SELECT * from todo where stop_date=? AND status != 'Выполнено';";
-
-        LocalDateTime localDateTimeNow = LocalDateTime.of(LocalDateTime.now().getYear()
-                , LocalDateTime.now().getMonth()
-                , LocalDateTime.now().getDayOfMonth()
-                , LocalDateTime.now().getHour()
-                , LocalDateTime.now().getMinute());
-
-        List<ToDo> listTodo = jdbcTemplate.query(sqlQuery, new Object[]{localDateTimeNow.plusMinutes(60)}, new BeanPropertyRowMapper<>(ToDo.class));
-        if (!(listTodo.isEmpty())) {
-            for (ToDo toDo : listTodo) {
-                System.out.println("------------------------------------------------------------------------------");
-                System.out.println("До конца срока задачи остался 1 час || ID - " + toDo.getTodoId() + " || Задача:" + toDo.getDescription());
-            }
-        }
-    }
-
-    /**
-     * Метод возвращает объект ToDO из базы данных;
+     * Метод возвращает объект ToDo, по todoId;
      *
      * @param todoId
-     * @return ToDo or null;
+     * @return ToDo
      */
     @Override
-    public ToDo getToDoById(int todoId) {
-        String sqlQuery = "SELECT * from todo where todo_id=?;";
-        return jdbcTemplate.query(sqlQuery, new Object[]{todoId}, new BeanPropertyRowMapper<>(ToDo.class)).stream().findAny().orElse(null);
+    public ToDo getToDoByTodoId(int todoId) {
+        String sqlQuery = "SELECT * from todo where todo_id=? AND user_id=?;";
+        return jdbcTemplate.query(sqlQuery, new Object[]{todoId, userId}, new BeanPropertyRowMapper<>(ToDo.class)).stream().findAny().orElse(null);
     }
 
     /**
-     * Метод изменяет статус задачи на Выполнено;
+     * Метод возвращает список всех объектов пользователя, статус задания которых не выполнен;
+     *
+     * @return List<ToDo>
+     */
+    @Override
+    public List<ToDo> listAllUnfulfilledToDo() {
+        String sqlQuery = "SELECT * from todo where status != 'Выполнено' AND user_id=? order by parent_todo_id;";
+        return jdbcTemplate.query(sqlQuery, new Object[]{userId}, new BeanPropertyRowMapper<>(ToDo.class));
+    }
+
+    /**
+     * Метод изменяет статус задачи на 'Выполнено';
      *
      * @param todoId
      */
     @Override
     public void changeStatusToDoInDataBase(int todoId) {
-        String sqlQuery = "UPDATE todo SET status='Выполнено' where todo_id=?;";
-        jdbcTemplate.update(sqlQuery, todoId);
+        String sqlQuery = "UPDATE todo SET status='Выполнено' where todo_id=? AND user_id=?;";
+        jdbcTemplate.update(sqlQuery, todoId, userId);
     }
 
     /**
-     * Метод проверяет есть ли у задачи, незакрытые подзадачи;
+     * Метод проверяет, есть ли у задачи, невыполненные подзадачи;
      *
      * @param todoId
-     * @return true or false
+     * @return true or false;
      */
     @Override
     public boolean checkStatusSubtasks(int todoId) {
@@ -135,6 +120,17 @@ public class SimpleJdbcTemplateRepository implements JdbcTemplateRepository {
             return false;
         }
         return true;
+    }
+
+    /**
+     * Метод возвращает список задач, Дедлайн которых через 1 час;
+     *
+     * @return List<ToDo>
+     */
+    @Override
+    public List<ToDo> listDeadLineToDo() {
+        String sqlQuery = "SELECT * from todo where stop_date=? AND status != 'Выполнено' AND user_id=?;";
+        return jdbcTemplate.query(sqlQuery, new Object[]{getDateTimeNow().plusMinutes(60), userId}, new BeanPropertyRowMapper<>(ToDo.class));
     }
 }
 
